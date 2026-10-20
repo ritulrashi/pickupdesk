@@ -83,4 +83,39 @@ class OversellIT extends InventoryITBase {
             assertThat(contention).isZero();
         }
     }
+
+    /**
+     * Two-sku orders arriving with their lines in opposite orders. Without the sku sort in reserve, thread 1
+     * would lock A then wait for B while thread 2 holds B and waits for A, and Postgres would abort one as a
+     * deadlock victim. With the sort, every call succeeds.
+     */
+    @ParameterizedTest
+    @EnumSource(value = ReserveStrategy.class, names = {"CONDITIONAL", "FOR_UPDATE"})
+    void oppositeLineOrdersDoNotDeadlock(ReserveStrategy strategy) throws Exception {
+        String store = newStore(), a = "A-" + newSku(), b = "B-" + newSku();
+        int orders = 100;
+        seed(store, a, orders);
+        seed(store, b, orders);
+
+        ExecutorService pool = Executors.newFixedThreadPool(32);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<?>> futures = new ArrayList<>();
+        for (int i = 0; i < orders; i++) {
+            var lines = i % 2 == 0
+                    ? List.of(new ReserveRequest.Line(a, 1), new ReserveRequest.Line(b, 1))
+                    : List.of(new ReserveRequest.Line(b, 1), new ReserveRequest.Line(a, 1));
+            futures.add(pool.submit(() -> {
+                start.await();
+                return service.reserve(new ReserveRequest(UUID.randomUUID(), store, lines, null), strategy);
+            }));
+        }
+        start.countDown();
+        for (var f : futures) {
+            f.get();   // a deadlock victim surfaces here as an ExecutionException
+        }
+        pool.shutdown();
+
+        assertThat(stock(store, a).reserved()).isEqualTo(orders);
+        assertThat(stock(store, b).reserved()).isEqualTo(orders);
+    }
 }
