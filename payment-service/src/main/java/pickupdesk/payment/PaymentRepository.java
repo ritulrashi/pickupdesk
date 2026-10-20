@@ -64,6 +64,9 @@ public class PaymentRepository {
 
     /** Atomic, race-free state change: only succeeds from a legal source status. */
     public Optional<Payment> transition(UUID id, PaymentStatus target) {
+        if (target.legalSources().isEmpty()) {
+            return Optional.empty();   // AUTHORIZED/DECLINED are only entered by authorize; avoids an empty IN ()
+        }
         return jdbc.sql("""
                 UPDATE payments SET status = :target, updated_at = now()
                 WHERE id = :id AND status IN (:sources)

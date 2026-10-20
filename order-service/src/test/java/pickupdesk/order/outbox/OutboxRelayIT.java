@@ -18,7 +18,7 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.kafka.KafkaConnectionDetails;
 
 import pickupdesk.order.OrderITBase;
 
@@ -31,8 +31,8 @@ class OutboxRelayIT extends OrderITBase {
 
     @Autowired
     OutboxRelay relay;
-    @Value("${spring.kafka.bootstrap-servers}")
-    String bootstrap;
+    @Autowired
+    KafkaConnectionDetails kafkaConnection;
 
     @AfterEach
     void disarm() {
@@ -50,7 +50,7 @@ class OutboxRelayIT extends OrderITBase {
     /** Reads the whole topic from the beginning with a throwaway consumer group, returning eventId headers. */
     private List<String> eventIdsOnTopic(int atLeast) {
         var props = Map.<String, Object>of(
-                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap,
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, String.join(",", kafkaConnection.getBootstrapServers()),
                 ConsumerConfig.GROUP_ID_CONFIG, "it-" + UUID.randomUUID(),
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest",
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,

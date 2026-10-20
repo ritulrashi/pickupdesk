@@ -71,6 +71,9 @@ public class OrderRepository {
      * set only when non-null.
      */
     public Optional<Order> transition(UUID id, OrderStatus target, String failureReason, UUID paymentId) {
+        if (target.legalSources().isEmpty()) {
+            return Optional.empty();   // nothing may move into CREATED; also avoids an empty IN ()
+        }
         return jdbc.sql("""
                 UPDATE orders
                 SET status = :target,

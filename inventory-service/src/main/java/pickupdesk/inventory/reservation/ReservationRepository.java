@@ -82,6 +82,9 @@ public class ReservationRepository {
      */
     public Optional<Reservation> transition(UUID orderId, ReservationStatus target) {
         List<String> sources = target.legalSources().stream().map(Enum::name).toList();
+        if (sources.isEmpty()) {
+            return Optional.empty();   // nothing may move into HELD; also avoids an empty IN ()
+        }
         return jdbc.sql("""
                 UPDATE reservations
                 SET status = :target, expires_at = NULL, updated_at = now()
