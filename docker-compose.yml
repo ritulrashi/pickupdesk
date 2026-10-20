@@ -92,6 +92,7 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/inventory
       DB_USER: inventory
       DB_PASSWORD: inventory
+      RESERVE_STRATEGY: ${RESERVE_STRATEGY:-conditional}   # bench/reserve_strategy_bench.py switches this
     ports:
       - "127.0.0.1:8082:8080"
 

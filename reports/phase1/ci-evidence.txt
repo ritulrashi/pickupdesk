@@ -1,0 +1,41 @@
+# Phase 1 acceptance evidence
+# CI run: https://github.com/ritulrashi/pickupdesk/actions/runs/39374411081 (commit 190e00a)
+# Runner: GitHub-hosted ubuntu-24.04
+
+##[group]Runner Image Provisioner
+Version: 20261015.610
+##[group]Runner Image
+Image: ubuntu-24.04
+Version: 20261018.339.1
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 19.62 s -- in pickupdesk.order.OrderServiceHealthIT
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.186 s -- in pickupdesk.inventory.InventoryServiceHealthIT
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.763 s -- in pickupdesk.payment.PaymentServiceHealthIT
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+##[group]Runner Image Provisioner
+Version: 20261012.601
+##[group]Runner Image
+Image: ubuntu-24.04
+Version: 20261012.334.1
+postgres           healthy
+redis              healthy
+kafka              healthy
+order-service      healthy
+inventory-service  healthy
+payment-service    healthy
+127.0.0.1:8081 {"status":"UP","groups":["liveness","readiness"],"components":{"db":{"status":"UP","details":{"database":"PostgreSQL","validationQuery":"isValid()"}},"diskSpace":{"status":"UP","details":{"total":76887154688,"free":12280942592,"threshold":10485760,"path":"/app/.","exists":true}},"livenessState":{"status":"UP"},"ping":{"status":"UP"},"readinessState":{"status":"UP"},"ssl":{"status":"UP","details":{"validChains":[],"invalidChains":[]}}}}
+127.0.0.1:8082 {"status":"UP","groups":["liveness","readiness"],"components":{"db":{"status":"UP","details":{"database":"PostgreSQL","validationQuery":"isValid()"}},"diskSpace":{"status":"UP","details":{"total":76887154688,"free":12280836096,"threshold":10485760,"path":"/app/.","exists":true}},"livenessState":{"status":"UP"},"ping":{"status":"UP"},"readinessState":{"status":"UP"},"ssl":{"status":"UP","details":{"validChains":[],"invalidChains":[]}}}}
+127.0.0.1:8083 {"status":"UP","groups":["liveness","readiness"],"components":{"db":{"status":"UP","details":{"database":"PostgreSQL","validationQuery":"isValid()"}},"diskSpace":{"status":"UP","details":{"total":76887154688,"free":12280672256,"threshold":10485760,"path":"/app/.","exists":true}},"livenessState":{"status":"UP"},"ping":{"status":"UP"},"readinessState":{"status":"UP"},"ssl":{"status":"UP","details":{"validChains":[],"invalidChains":[]}}}}
+inventory,orders,payments
+PONG
+kafka:9092 (id: 1 rack: null) -> (
+SMOKE: PASS
+NAME                             MEM USAGE / LIMIT     CPU %
+pickupdesk-order-service-1       164.4MiB / 7.752GiB   0.29%
+pickupdesk-inventory-service-1   166.6MiB / 7.752GiB   0.34%
+pickupdesk-payment-service-1     157.3MiB / 7.752GiB   0.25%
+pickupdesk-postgres-1            77.25MiB / 7.752GiB   3.71%
+pickupdesk-kafka-1               346MiB / 7.752GiB     2.32%
+pickupdesk-redis-1               8.23MiB / 7.752GiB    0.41%

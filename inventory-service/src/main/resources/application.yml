@@ -13,6 +13,9 @@ server:
   shutdown: graceful
 
 management:
+  info:
+    env:
+      enabled: true
   endpoints:
     web:
       exposure:
@@ -25,3 +28,17 @@ management:
   metrics:
     tags:
       service: inventory-service
+
+inventory:
+  # conditional | for-update | optimistic  (ADR-007; conditional is the production choice)
+  reserve-strategy: ${RESERVE_STRATEGY:conditional}
+  optimistic-max-attempts: 5
+  default-ttl-seconds: 900
+  expiry:
+    enabled: ${EXPIRY_ENABLED:true}
+    interval-ms: ${EXPIRY_INTERVAL_MS:10000}
+    batch-size: 100
+
+# Exposed on /actuator/info so benchmarks can verify which strategy they measured.
+info:
+  reserveStrategy: ${inventory.reserve-strategy}
