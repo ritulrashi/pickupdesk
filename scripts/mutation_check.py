@@ -10,6 +10,7 @@ Exit code 1 if any mutant survived.
 """
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -64,11 +65,35 @@ def run(cmd):
     return subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
 
 
+SUMMARY = re.compile(r"Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)\s*$", re.M)
+
+
+def run_its(module, tests):
+    """Runs the named failsafe ITs. Returns (tests_run, failed) from the last summary line, or None if no tests ran."""
+    r = run(["./mvnw", "-B", "-pl", module, "verify",
+             "-Dtest=NONE", "-Dsurefire.failIfNoSpecifiedTests=false", f"-Dit.test={tests}"])
+    m = SUMMARY.findall(r.stdout)
+    if not m:
+        return None, r.stdout[-2000:]
+    ran, failures, errors, _ = map(int, m[-1])
+    return (ran, failures + errors), r.stdout[-2000:]
+
+
 def main():
     phase = sys.argv[1] if len(sys.argv) > 1 else "phase2"
     mutants = [m for m in MUTANTS if m[0] == phase]
     commit = run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
     print(f"# mutation check {phase} at {commit}")
+
+    # Baseline: the unmutated code must pass the same test selection, or a "kill" proves nothing.
+    for module, tests in sorted({(m[3], m[7]) for m in mutants}):
+        result, tail = run_its(module, tests)
+        if result is None or result[1] != 0:
+            print(f"# BASELINE FAILED for {module} [{tests}]: {result}")
+            print(tail)
+            sys.exit(2)
+        print(f"# baseline {module} [{tests}]: {result[0]} tests, 0 failed")
+
     print(f"{'id':6} {'result':9} {'secs':>5}  description  [tests]")
     survived = 0
     for _, mid, desc, module, path, old, new, tests in mutants:
@@ -78,18 +103,22 @@ def main():
             print(f"{mid:6} {'STALE':9} {0:5}  {desc}  (pattern not found exactly once)")
             survived += 1
             continue
-        open(full, "w", encoding="utf-8", newline="\n").write(src.replace(old, new))
+        with open(full, "w", encoding="utf-8", newline="") as f:
+            f.write(src.replace(old, new))
         t0 = time.time()
         try:
-            r = run(["./mvnw", "-B", "-q", "-pl", module, "verify",
-                     "-Dtest=NONE", "-Dsurefire.failIfNoSpecifiedTests=false", f"-Dit.test={tests}"])
+            result, tail = run_its(module, tests)
         finally:
             run(["git", "checkout", "--", path])
-        killed = r.returncode != 0
-        compiled = "COMPILATION ERROR" not in r.stdout
-        result = "KILLED" if killed and compiled else ("NOCOMPILE" if not compiled else "SURVIVED")
-        survived += result != "KILLED"
-        print(f"{mid:6} {result:9} {int(time.time() - t0):5}  {desc}  [{tests}]", flush=True)
+        if result is None:
+            label = "NOCOMPILE"          # tests never ran: not a kill
+        elif result[1] > 0:
+            label = "KILLED"
+        else:
+            label = "SURVIVED"
+        survived += label != "KILLED"
+        detail = f"{result[1]}/{result[0]} failed" if result else "no tests ran"
+        print(f"{mid:6} {label:9} {int(time.time() - t0):5}  {desc}  [{tests}] {detail}", flush=True)
     print(f"# {len(mutants) - survived}/{len(mutants)} mutants killed")
     sys.exit(1 if survived else 0)
 

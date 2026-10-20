@@ -1,0 +1,16 @@
+== container health ==
+postgres           healthy
+redis              healthy
+kafka              healthy
+order-service      healthy
+inventory-service  healthy
+payment-service    healthy
+== service health endpoints ==
+127.0.0.1:8081 {"status":"UP","groups":["liveness","readiness"],"components":{"db":{"status":"UP","details":{"database":"PostgreSQL","validationQuery":"isValid()"}},"diskSpace":{"status":"UP","details":{"total":33636024320,"free":18549268480,"threshold":10485760,"path":"/app/.","exists":true}},"livenessState":{"status":"UP"},"ping":{"status":"UP"},"readinessState":{"status":"UP"},"ssl":{"status":"UP","details":{"validChains":[],"invalidChains":[]}}}}
+127.0.0.1:8082 {"status":"UP","groups":["liveness","readiness"],"components":{"db":{"status":"UP","details":{"database":"PostgreSQL","validationQuery":"isValid()"}},"diskSpace":{"status":"UP","details":{"total":33636024320,"free":18549104640,"threshold":10485760,"path":"/app/.","exists":true}},"livenessState":{"status":"UP"},"ping":{"status":"UP"},"readinessState":{"status":"UP"},"ssl":{"status":"UP","details":{"validChains":[],"invalidChains":[]}}}}
+127.0.0.1:8083 {"status":"UP","groups":["liveness","readiness"],"components":{"db":{"status":"UP","details":{"database":"PostgreSQL","validationQuery":"isValid()"}},"diskSpace":{"status":"UP","details":{"total":33636024320,"free":18549104640,"threshold":10485760,"path":"/app/.","exists":true}},"livenessState":{"status":"UP"},"ping":{"status":"UP"},"readinessState":{"status":"UP"},"ssl":{"status":"UP","details":{"validChains":[],"invalidChains":[]}}}}
+== infra probes ==
+inventory,orders,payments
+PONG
+kafka:9092 (id: 1 rack: null) -> (
+SMOKE: PASS

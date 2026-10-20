@@ -57,3 +57,20 @@ Short ADRs. Each one: context, decision, alternatives considered, consequence.
 - **Decision:** Each batch is one transaction: a CTE selects up to N due HELD rows `FOR UPDATE SKIP LOCKED` and marks them EXPIRED, then the stock rows are decremented in (store, sku) order. A partial index on `expires_at WHERE status = 'HELD'` keeps the scan cheap. The job drains in batches of 100 every 10 s.
 - **Alternatives:** A plain `FOR UPDATE`, where concurrent runs block each other and then find nothing left. A distributed lock or leader election (ShedLock), which is one more moving part. Redis key expiry, which is not transactional with the stock row.
 - **Consequence:** Two runs claim disjoint rows, so neither waits nor double-processes. A release racing the job waits on the row lock, re-checks the status, and finds EXPIRED, which makes it a no-op. `ExpiryIT` covers both cases: 4 concurrent drainers over 90 due rows claim exactly 90, and 60 releases raced against the job leave reserved at 0. The staleness bound is one interval plus one batch, so a dead hold can outlive its expiry by about 10 s.
+
+## ADR-007: Reserve with a single conditional UPDATE
+
+- **Context:** Two customers buying the last unit at the same moment must not both succeed. The candidates are (a) one conditional `UPDATE stock SET reserved = reserved + q WHERE ... AND on_hand - reserved >= q`, (b) `SELECT ... FOR UPDATE`, check in Java, then `UPDATE`, and (c) optimistic: read the version, `UPDATE ... WHERE version = v`, retry up to 5 times with jittered backoff.
+- **Decision:** (a), the conditional update. (b) and (c) stay in the code behind `inventory.reserve-strategy` so they can be compared.
+- **Evidence** (`reports/phase2/reserve-strategies.jsonl`, 2-vCPU Codespace, the load generator shares the box; median of 5 repeats after a discarded warm-up; hot-row workload = 50 keep-alive clients × 40 sequential reservations on one SKU):
+
+  | strategy | throughput req/s (median, range) | p95 ms (median, range) | sell-out 200→50: units sold / 503s |
+  |---|---|---|---|
+  | conditional | 394.5 (291.6–433.8) | 217.1 (171.4–316.7) | 50 / 0 (all 5 repeats) |
+  | for-update | 234.8 (207.1–318.3) | 414.8 (263.9–522.0) | 50 / 0 |
+  | optimistic | 202.7 (193.5–269.7) | 410.5 (318.4–456.7) | 50 / 0 |
+
+  All three sold exactly 50 of 50 with 0 oversold in every repeat. The CHECK constraints are a backstop for all of them.
+- **Why (a):** The check and the write are one statement and one round trip, so the row lock is held only for that statement. (b) holds the lock across two round trips, which shows up as about 40% lower throughput on one hot row. (c) does the extra read and, under contention, wasted updates.
+- **What I expected but did not observe:** optimistic retries running out (HTTP 503). The Hikari pool of 10 caps concurrency at 10 transactions per instance, which kept per-row contention below the 5-attempt limit. With a bigger pool, or several instances, false rejections become possible. `OversellIT` asserts the weaker property that holds for optimistic: it never oversells, and every unsold unit is explained by a request that gave up.
+- **Consequence:** One hot SKU serializes on its row lock no matter which strategy is used. That is the scaling limit, and the 100x answer is to split hot stock into buckets or shard by store, not to change the lock type. The measured ranges overlap at the edges (for-update's best repeat beats conditional's worst), so the claim is "faster at the median on this box", not a precise ratio.

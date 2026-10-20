@@ -1,0 +1,7 @@
+NAME                             MEM USAGE / LIMIT     CPU %
+pickupdesk-inventory-service-1   177.8MiB / 7.756GiB   0.12%
+pickupdesk-payment-service-1     173.8MiB / 7.756GiB   0.10%
+pickupdesk-order-service-1       200.8MiB / 7.756GiB   0.09%
+pickupdesk-redis-1               11.86MiB / 7.756GiB   0.41%
+pickupdesk-postgres-1            130.4MiB / 7.756GiB   0.09%
+pickupdesk-kafka-1               412.5MiB / 7.756GiB   0.68%
