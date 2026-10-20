@@ -17,6 +17,8 @@ import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INV = "inventory-service/src/main/java/pickupdesk/inventory/"
+PAY = "payment-service/src/main/java/pickupdesk/payment/"
+ORD = "order-service/src/main/java/pickupdesk/order/"
 
 # (phase, id, description, module, file, old, new, tests)
 MUTANTS = [
@@ -58,6 +60,44 @@ MUTANTS = [
      INV + "reservation/ReservationService.java",
      "if (current.get().status() == ReservationStatus.EXPIRED) {", "if (false) {",
      "ExpiryIT"),
+
+    ("phase3", "P3-1", "authorize insert without ON CONFLICT on the idempotency key", "payment-service",
+     PAY + "PaymentRepository.java",
+     "                ON CONFLICT (idempotency_key) DO NOTHING\n", "",
+     "PaymentApiIT"),
+    ("phase3", "P3-2", "payment transition ignores the legal-source status check", "payment-service",
+     PAY + "PaymentRepository.java",
+     "WHERE id = :id AND status IN (:sources)", "WHERE id = :id AND (status IN (:sources) OR true)",
+     "PaymentApiIT"),
+    ("phase3", "P3-3", "authorize without the per-order advisory lock (fence race)", "payment-service",
+     PAY + "PaymentService.java",
+     "                payments.lockOrder(req.orderId());\n", "",
+     "PaymentApiIT"),
+
+    ("phase4", "P4-1", "order transition ignores the legal-source status check", "order-service",
+     ORD + "domain/OrderRepository.java",
+     "WHERE id = :id AND status IN (:sources)", "WHERE id = :id AND (status IN (:sources) OR true)",
+     "OrderTransitionsIT"),
+    ("phase4", "P4-2", "state change commits without its outbox row (dual-write gap)", "order-service",
+     ORD + "domain/OrderTransitions.java",
+     "        outbox.append(eventId, o.id(), type, body);\n", "",
+     "OrderSagaIT,OutboxRelayIT,PickupFlowIT"),
+    ("phase4", "P4-3", "authorize key not derived from the order (retries would double-charge)", "order-service",
+     ORD + "clients/PaymentClient.java",
+     'return "order-" + orderId + "-authorize";', 'return "order-" + UUID.randomUUID() + "-authorize";',
+     "OrderSagaIT"),
+    ("phase4", "P4-4", "compensation forgets to void/fence at payment", "order-service",
+     ORD + "saga/SagaOrchestrator.java",
+     "                payment.cancelOrder(o.id());\n", "",
+     "OrderSagaIT"),
+    ("phase4", "P4-5", "order idempotency claim without ON CONFLICT", "order-service",
+     ORD + "idempotency/IdempotencyRepository.java",
+     "                ON CONFLICT (key) DO NOTHING\n", "",
+     "OrderIdempotencyIT"),
+    ("phase4", "P4-6", "lease always granted (two actors drive one order)", "order-service",
+     ORD + "domain/OrderRepository.java",
+     "WHERE id = :id AND (saga_lease_until IS NULL OR saga_lease_until < now())", "WHERE id = :id",
+     "OrderIdempotencyIT,PickupFlowIT"),
 ]
 
 
@@ -81,7 +121,7 @@ def run_its(module, tests):
 
 def main():
     phase = sys.argv[1] if len(sys.argv) > 1 else "phase2"
-    mutants = [m for m in MUTANTS if m[0] == phase]
+    mutants = [m for m in MUTANTS if m[0] == phase or phase == "all"]
     commit = run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
     print(f"# mutation check {phase} at {commit}")
 

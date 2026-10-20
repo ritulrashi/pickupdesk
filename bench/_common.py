@@ -59,9 +59,11 @@ class Client:
         u = urllib.parse.urlparse(base_url)
         self.conn = http.client.HTTPConnection(u.hostname, u.port, timeout=timeout)
 
-    def request(self, method, path, body=None):
+    def request(self, method, path, body=None, headers=None):
         data = json.dumps(body).encode() if body is not None else None
-        headers = {"Content-Type": "application/json"} if data else {}
+        headers = dict(headers or {})
+        if data:
+            headers["Content-Type"] = "application/json"
         t0 = time.perf_counter()
         try:
             self.conn.request(method, path, body=data, headers=headers)
