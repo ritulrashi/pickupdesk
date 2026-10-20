@@ -83,6 +83,14 @@ public class PaymentController {
         return service.refund(ref.paymentId());
     }
 
+    public record OrderRef(@NotNull UUID orderId) {
+    }
+
+    @PostMapping("/internal/payments/cancel-order")
+    public PaymentService.CancelOrderResult cancelOrder(@Valid @RequestBody OrderRef ref) {
+        return service.cancelOrder(ref.orderId());
+    }
+
     @GetMapping("/internal/payments/{id}")
     public Payment get(@PathVariable UUID id) {
         return service.get(id);

@@ -79,6 +79,10 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/orders
       DB_USER: order
       DB_PASSWORD: order
+      INVENTORY_URL: http://inventory-service:8080
+      PAYMENT_URL: http://payment-service:8080
+      KAFKA_BOOTSTRAP: kafka:9092
+      PICKUP_WINDOW_SECONDS: ${PICKUP_WINDOW_SECONDS:-604800}
     ports:
       - "127.0.0.1:8081:8080"
 
@@ -93,6 +97,7 @@ services:
       DB_USER: inventory
       DB_PASSWORD: inventory
       RESERVE_STRATEGY: ${RESERVE_STRATEGY:-conditional}   # bench/reserve_strategy_bench.py switches this
+      KAFKA_BOOTSTRAP: kafka:9092
     ports:
       - "127.0.0.1:8082:8080"
 

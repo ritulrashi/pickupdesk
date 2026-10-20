@@ -76,6 +76,50 @@ public class PaymentRepository {
                 .optional();
     }
 
+    /**
+     * Serializes authorize and cancel-order for one order (transaction-scoped advisory lock). Without it an
+     * authorize could check the fence, a cancel could then fence and find nothing to void, and the authorize
+     * would commit a live charge for a cancelled order.
+     */
+    public void lockOrder(UUID orderId) {
+        jdbc.sql("SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(:id, 0))) AS locked")
+                .param("id", orderId.toString())
+                .query(Integer.class)
+                .single();
+    }
+
+    public boolean isFenced(UUID orderId) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM order_fences WHERE order_id = :id)")
+                .param("id", orderId)
+                .query(Boolean.class)
+                .single();
+    }
+
+    public void insertFence(UUID orderId) {
+        jdbc.sql("INSERT INTO order_fences (order_id) VALUES (:id) ON CONFLICT DO NOTHING")
+                .param("id", orderId)
+                .update();
+    }
+
+    /** @return ids of the authorizations that were voided */
+    public java.util.List<UUID> voidLiveAuthorizations(UUID orderId) {
+        return jdbc.sql("""
+                UPDATE payments SET status = 'VOIDED', updated_at = now()
+                WHERE order_id = :id AND status = 'AUTHORIZED'
+                RETURNING id
+                """)
+                .param("id", orderId)
+                .query(UUID.class)
+                .list();
+    }
+
+    public boolean hasCapture(UUID orderId) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM payments WHERE order_id = :id AND status = 'CAPTURED')")
+                .param("id", orderId)
+                .query(Boolean.class)
+                .single();
+    }
+
     public void appendEvent(UUID paymentId, PaymentStatus type) {
         jdbc.sql("INSERT INTO payment_events (payment_id, type) VALUES (:id, :type)")
                 .param("id", paymentId)

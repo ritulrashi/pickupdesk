@@ -286,4 +286,56 @@ class PaymentApiIT {
         http.delete("/admin/failure-injection");
         assertThat(faults.get()).isEqualTo(FailureInjection.Settings.NONE);
     }
+
+    private ResponseEntity<JsonNode> cancelOrder(UUID order) {
+        return http.postForEntity("/internal/payments/cancel-order", Map.of("orderId", order), JsonNode.class);
+    }
+
+    private int livePayments(UUID order) {
+        return jdbc.sql("SELECT count(*) FROM payments WHERE order_id = :o AND status IN ('AUTHORIZED','CAPTURED')")
+                .param("o", order).query(Integer.class).single();
+    }
+
+    @Test
+    void cancelOrderVoidsLiveAuthorizationAndFencesLaterAuthorizes() {
+        UUID order = UUID.randomUUID();
+        String id = authorize(key(), body(order, "tok_visa_00004242", 500)).getBody().get("id").asText();
+
+        var first = cancelOrder(order);
+        var again = cancelOrder(order);
+        var late = authorize(key(), body(order, "tok_visa_00004242", 500));
+
+        assertThat(first.getBody().get("voidedPaymentIds").get(0).asText()).isEqualTo(id);
+        assertThat(again.getBody().get("voidedPaymentIds")).as("repeat is a no-op").isEmpty();
+        assertThat(late.getStatusCode()).isEqualTo(HttpStatus.PAYMENT_REQUIRED);
+        assertThat(late.getBody().get("declineReason").asText()).isEqualTo("order_cancelled");
+        assertThat(livePayments(order)).isZero();
+        assertThat(eventsFor(id)).containsExactly("AUTHORIZED", "VOIDED");
+    }
+
+    @Test
+    void cancelOrderBeforeAnyAuthorizeStillFences() {
+        UUID order = UUID.randomUUID();
+        cancelOrder(order);
+        assertThat(authorize(key(), body(order, "tok_visa_00004242", 500)).getStatusCode())
+                .isEqualTo(HttpStatus.PAYMENT_REQUIRED);
+        assertThat(livePayments(order)).isZero();
+    }
+
+    /** Authorize racing cancel-order: whichever order they serialize in, no live charge survives the cancel. */
+    @Test
+    void authorizeRacingCancelOrderNeverLeavesALiveCharge() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        for (int i = 0; i < 40; i++) {
+            UUID order = UUID.randomUUID();
+            CountDownLatch start = new CountDownLatch(1);
+            var auth = pool.submit(() -> { start.await(); return authorize(key(), body(order, "tok_visa_00004242", 500)); });
+            var cancel = pool.submit(() -> { start.await(); return cancelOrder(order); });
+            start.countDown();
+            auth.get();
+            cancel.get();
+            assertThat(livePayments(order)).as("iteration %d", i).isZero();
+        }
+        pool.shutdown();
+    }
 }

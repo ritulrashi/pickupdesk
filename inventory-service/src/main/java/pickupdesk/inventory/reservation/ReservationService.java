@@ -129,6 +129,16 @@ public class ReservationService {
         return move(orderId, ReservationStatus.RETURNED);
     }
 
+    /**
+     * For event consumers: performs the transition if it is legal right now and reports whether it happened,
+     * without throwing (a throw inside the consumer's transaction would mark it rollback-only).
+     */
+    public boolean applyIfLegal(UUID orderId, ReservationStatus target) {
+        var moved = reservations.transition(orderId, target);
+        moved.ifPresent(r -> applyStockDelta(r, target));
+        return moved.isPresent();
+    }
+
     public Reservation get(UUID orderId) {
         return reservations.findByOrderId(orderId).orElseThrow(() -> new NotFound(orderId));
     }

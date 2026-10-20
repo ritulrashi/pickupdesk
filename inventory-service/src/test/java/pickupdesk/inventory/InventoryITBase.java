@@ -21,7 +21,7 @@ import pickupdesk.inventory.stock.StockRepository;
  */
 @Import(TestcontainersConfig.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "inventory.expiry.enabled=false")
+        properties = {"inventory.expiry.enabled=false", "inventory.events.enabled=false"})
 public abstract class InventoryITBase {
 
     @Autowired

@@ -9,8 +9,12 @@ public record InventoryProperties(
         ReserveStrategy reserveStrategy,
         int optimisticMaxAttempts,
         int defaultTtlSeconds,
-        Expiry expiry) {
+        Expiry expiry,
+        Events events) {
 
     public record Expiry(boolean enabled, long intervalMs, int batchSize) {
+    }
+
+    public record Events(boolean enabled, String topic) {
     }
 }

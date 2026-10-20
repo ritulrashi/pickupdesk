@@ -16,7 +16,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 // Spring Boot tests disable metrics export by default; we want the real /actuator/prometheus.
 @AutoConfigureObservability
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {"spring.kafka.admin.auto-create=false", "order.jobs.enabled=false"})
 class OrderServiceHealthIT {
 
     @Container

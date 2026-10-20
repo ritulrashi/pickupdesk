@@ -54,13 +54,16 @@ public class PaymentService {
 
         FailureInjection.Decision d = faults.draw();
         FailureInjection.sleep(d.latencyMs());
-        boolean decline = d.decline() || req.token().startsWith(DECLINE_TOKEN_PREFIX);
-        PaymentStatus status = decline ? PaymentStatus.DECLINED : PaymentStatus.AUTHORIZED;
-        String reason = decline ? (d.decline() ? "injected_decline" : "card_declined") : null;
 
         AuthorizeResult result;
         try {
             result = tx.execute(t -> {
+                payments.lockOrder(req.orderId());
+                String reason = payments.isFenced(req.orderId()) ? "order_cancelled"
+                        : d.decline() ? "injected_decline"
+                        : req.token().startsWith(DECLINE_TOKEN_PREFIX) ? "card_declined"
+                        : null;
+                PaymentStatus status = reason == null ? PaymentStatus.AUTHORIZED : PaymentStatus.DECLINED;
                 var inserted = payments.insertIfNewKey(UUID.randomUUID(), req.orderId(), req.token(),
                         req.amountCents(), status, reason, idempotencyKey, hash);
                 if (inserted.isEmpty()) {
@@ -106,6 +109,25 @@ public class PaymentService {
         FailureInjection.Decision d = faults.draw();
         FailureInjection.sleep(d.latencyMs());
         return move(paymentId, PaymentStatus.REFUNDED);
+    }
+
+    /** @param voidedPaymentIds authorizations voided by this call (empty on a repeat) */
+    public record CancelOrderResult(UUID orderId, java.util.List<UUID> voidedPaymentIds, boolean captured) {
+    }
+
+    /**
+     * Saga compensation when the caller cannot know whether an authorize happened (e.g. it timed out).
+     * Fences the order so no later authorize can succeed, and voids any live authorization. Idempotent.
+     * A captured payment is never touched here; it needs a refund.
+     */
+    public CancelOrderResult cancelOrder(UUID orderId) {
+        return tx.execute(t -> {
+            payments.lockOrder(orderId);
+            payments.insertFence(orderId);
+            var voided = payments.voidLiveAuthorizations(orderId);
+            voided.forEach(id -> payments.appendEvent(id, PaymentStatus.VOIDED));
+            return new CancelOrderResult(orderId, voided, payments.hasCapture(orderId));
+        });
     }
 
     public Payment get(UUID paymentId) {

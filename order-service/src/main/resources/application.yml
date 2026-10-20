@@ -7,6 +7,18 @@ spring:
     password: ${DB_PASSWORD:order}
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 10000
+        request.timeout.ms: 5000
+        max.block.ms: 5000
+
 
 server:
   port: 8080
@@ -25,3 +37,32 @@ management:
   metrics:
     tags:
       service: order-service
+
+order:
+  inventory-url: ${INVENTORY_URL:http://localhost:8082}
+  payment-url: ${PAYMENT_URL:http://localhost:8083}
+  topic: order-events
+  lease-seconds: 30
+  pickup-window-seconds: ${PICKUP_WINDOW_SECONDS:604800}   # 7 days
+  saga-deadline-seconds: 120
+  max-pickup-attempts: 5
+  capture-alert-threshold: 3
+  pickup-code-iterations: 20000
+  http:                       # values documented in ADR-015
+    connect-timeout-ms: 500
+    read-timeout-ms: 2000
+    retry-max-attempts: 3
+    retry-initial-backoff-ms: 100
+    retry-multiplier: 2.0
+    retry-jitter: 0.5
+    breaker-window: 20
+    breaker-min-calls: 10
+    breaker-failure-rate: 50
+    breaker-open-ms: 5000
+  jobs:
+    enabled: ${ORDER_JOBS_ENABLED:true}
+    relay-interval-ms: 200
+    relay-batch-size: 100
+    recovery-interval-ms: 5000
+    recovery-stale-seconds: 10
+    expiry-interval-ms: 30000

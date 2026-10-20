@@ -7,6 +7,13 @@ spring:
     password: ${DB_PASSWORD:inventory}
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+    consumer:
+      group-id: inventory-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 server:
   port: 8080
@@ -38,6 +45,9 @@ inventory:
     enabled: ${EXPIRY_ENABLED:true}
     interval-ms: ${EXPIRY_INTERVAL_MS:10000}
     batch-size: 100
+  events:
+    enabled: ${EVENTS_ENABLED:true}
+    topic: order-events
 
 # Exposed on /actuator/info so benchmarks can verify which strategy they measured.
 info:
