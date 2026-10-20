@@ -1,0 +1,18 @@
+# mutation check phase2 at 755d011
+# baseline inventory-service [ExpiryIT]: 4 tests, 0 failed
+# baseline inventory-service [OversellIT]: 5 tests, 0 failed
+# baseline inventory-service [ReservationApiIT]: 14 tests, 0 failed
+# baseline inventory-service [ReservationApiIT,ExpiryIT]: 18 tests, 0 failed
+id     result     secs  description  [tests]
+P2-1   KILLED       23  conditional reserve without the availability guard  [OversellIT] 1/5 failed
+P2-2   KILLED       24  SELECT ... FOR UPDATE without FOR UPDATE (read-then-write race)  [OversellIT] 1/5 failed
+P2-3   KILLED       24  optimistic update without the version check  [OversellIT] 1/5 failed
+P2-4   KILLED       71  reserve lines not sorted by sku (lock-order deadlock)  [OversellIT] 1/5 failed
+P2-5   KILLED       23  reserve insert without ON CONFLICT (idempotency)  [ReservationApiIT] 4/14 failed
+P2-6   KILLED       24  transition ignores the legal-source status check  [ReservationApiIT,ExpiryIT] 5/18 failed
+P2-7   KILLED       22  expiry job claims non-HELD rows  [ExpiryIT] 3/4 failed
+P2-8   KILLED       22  release before reserve writes no tombstone  [ReservationApiIT] 1/14 failed
+P2-9   KILLED       22  releasing an EXPIRED reservation is treated as illegal  [ExpiryIT] 2/4 failed
+# 9/9 mutants killed
+EXIT=0
+# JDK: openjdk 21.0.7 (Microsoft build); machine: Codespace 2 vCPU AMD EPYC 7763, 8 GB
