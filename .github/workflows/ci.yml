@@ -9,11 +9,11 @@ on:
 jobs:
   build-test:
     name: build + unit + integration tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -22,7 +22,7 @@ jobs:
         run: ./mvnw -B verify
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-reports
           path: |
@@ -32,10 +32,10 @@ jobs:
 
   compose-smoke:
     name: docker compose up + smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Start stack and wait for healthchecks
         run: docker compose up -d --build --wait --wait-timeout 300
       - name: Smoke test
