@@ -1,9 +1,7 @@
 {
   "name": "pickupdesk",
-  "image": "mcr.microsoft.com/devcontainers/java:1-21-bookworm",
-  "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" }
-  },
+  // Default Codespaces image: Docker, Java (SDKMAN), Python preinstalled. The java:21 image + docker-in-docker
+  // feature failed to build (expired yarn apt key in the base image, 2026-10-20).
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
   "hostRequirements": { "cpus": 2 }
 }
