@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    name: build + unit + integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build, unit tests (surefire), Testcontainers ITs (failsafe)
+        run: ./mvnw -B verify
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+          if-no-files-found: ignore
+
+  compose-smoke:
+    name: docker compose up + smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start stack and wait for healthchecks
+        run: docker compose up -d --build --wait --wait-timeout 300
+      - name: Smoke test
+        run: scripts/smoke.sh
+      - name: Container memory snapshot
+        if: always()
+        run: docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}'
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

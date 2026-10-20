@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/inventory}
+    username: ${DB_USER:inventory}
+    password: ${DB_PASSWORD:inventory}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  metrics:
+    tags:
+      service: inventory-service
