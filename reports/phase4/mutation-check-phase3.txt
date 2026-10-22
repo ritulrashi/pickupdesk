@@ -1,0 +1,7 @@
+# mutation check phase3 at 380421f
+# baseline payment-service [PaymentApiIT]: 16 tests, 0 failed
+id     result     secs  description  [tests]
+P3-1   KILLED       25  authorize insert without ON CONFLICT on the idempotency key  [PaymentApiIT] 1/16 failed
+P3-2   KILLED       26  payment transition ignores the legal-source status check  [PaymentApiIT] 2/16 failed
+P3-3   KILLED       24  authorize without the per-order advisory lock (fence race)  [PaymentApiIT] 1/16 failed
+# 3/3 mutants killed

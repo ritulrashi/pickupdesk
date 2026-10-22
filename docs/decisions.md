@@ -93,3 +93,55 @@ Short ADRs. Each one: context, decision, alternatives considered, consequence.
 
 - **Decision:** The API accepts only `tok_[A-Za-z0-9_]{8,64}`. A raw card number fails validation (400) and is never stored. The token is excluded from JSON (`@JsonIgnore`) and from `toString`; responses carry only `tokenLast4`. The request hash covers the token without containing it.
 - **Consequence:** A simulator can't tokenize anything, so the security property is "no PAN ever reaches this system", and the input validation test checks it.
+
+## ADR-013: Orchestrated saga whose state is the order row, plus two extra edges
+
+- **Context:** Placing an order touches three services, each with its own database. Two-phase commit would need an XA coordinator across Postgres databases and HTTP services, holding locks across network calls, and it blocks if the coordinator dies. The spec asks for a saga with compensation.
+- **Decision:** order-service orchestrates. `SagaOrchestrator.advance(orderId)` reads the order's *persisted* status and runs the next step: reserve, then authorize, then confirm, or compensate (cancel-order at payment, release at inventory). It repeats until it can make no more progress. Every remote step is idempotent by order id, and authorize uses the key `order-<id>-authorize`. The same method serves the original request, a client retry, and crash recovery.
+- **Crash between reserve and authorize** (spec section 10): the row says RESERVED and the lease lapses. `OrderJobs.recoverStale` picks the order up after 10 s and calls authorize with the same key, so no double charge. Past the 120 s saga deadline it compensates instead (`SAGA_TIMEOUT`). Covered by `OrderSagaIT.crashAfterReserveIsResumedByRecovery`, `crashAfterAuthorizeIsResumedWithoutASecondCharge`, and `sagaPastDeadlineIsCompensatedInsteadOfResumed`.
+- **Edges added to the spec's machine:** `PAYMENT_AUTHORIZED -> PAYMENT_FAILED`, because the hold can expire or be released between authorize and confirm, and the authorization must then be voided. `READY_FOR_PICKUP -> EXPIRED`, because orders made ready and never collected must also expire. `OrderTransitionsIT` checks all 100 (from, to) pairs against the database: 14 are legal, and the other 86 are rejected without writing an audit row.
+- **Alternatives:** Choreography, where each service reacts to the others' events. There is no central place that knows an order's state, and compensation logic gets spread across services. A workflow engine (Temporal and similar) is a heavyweight dependency to defend for three steps.
+- **Consequence:** The create call is synchronous. The customer gets CONFIRMED, CANCELLED with a reason, or 202 (still compensating) in one response. Latency is the sum of three downstream calls. Under a downstream outage the request takes up to about 6 s per call: retries plus timeouts.
+
+## ADR-014: One per-order lease instead of holding a database lock across HTTP calls
+
+- **Context:** A client retry, the recovery job, the expiry job, and an associate's pickup could all act on one order at once. `SELECT ... FOR UPDATE` held across remote calls would keep a connection and a row lock open for seconds.
+- **Decision:** `orders.saga_lease_until`. An actor claims it with `UPDATE ... WHERE saga_lease_until IS NULL OR saga_lease_until < now()` (30 s), and releases it in a `finally`. Losing the race gives 409 `in-progress` to API callers, and jobs skip the order.
+- **Consequence:** A crashed holder blocks an order for at most 30 s. A step that outlives its lease could overlap with a second actor, but every step is idempotent and every state change is a guarded `UPDATE`, so the worst case is a duplicate remote call, never a wrong state. Mutation P4-6 (lease always granted) is checked by `scripts/mutation_check.py`.
+
+## ADR-015: Timeouts, retries and circuit breakers for outbound calls
+
+| setting | value | why |
+|---|---|---|
+| connect timeout | 500 ms | same-host or same-VPC service; a slow connect means it's down |
+| read timeout | 2 s | p95 of a healthy call is tens of ms; 2 s rules out a stuck downstream without false alarms |
+| retries | 3 attempts total, exponential backoff starting at 100 ms, x2, randomized +-50% | spreads retry storms; worst case about 6.3 s per call |
+| retried on | transport errors, 5xx | a 4xx (decline, out of stock, illegal) is an answer, not a failure |
+| circuit breaker | count window 20, opens at 50% failures after at least 10 calls, open for 5 s, 3 probe calls half-open | stops hammering a dead dependency; the saga then fails fast and compensates or parks |
+
+Retry is the outer layer, so each attempt is recorded by the breaker, and an open breaker is not retried. Implemented with Resilience4j core modules in code (`clients/Downstream.java`). Values are in `application.yml`. Covered by `OrderSagaIT` (`paymentTimeoutRetriesWithSameKeyThenCompensatesBothSides`, `breakerOpensAfterRepeatedFailuresAndFailsFast`, `paymentTimeoutThenSuccessfulRetryConfirms`).
+
+## ADR-016: Order idempotency, and a pickup code that is shown once
+
+- **Decision:** `idempotency_keys(key PK, request_hash, order_id, status, response_status, response_body)`. The same transaction claims the key (`ON CONFLICT DO NOTHING`), inserts the order, and writes its CREATED audit and outbox rows. The outcomes:
+  - Different body with the same key: 422.
+  - Key COMPLETED: the stored status code and body are returned.
+  - Key IN_PROGRESS and the lease is free: the first attempt died, so this request finishes the saga.
+  - Lease held: 409 `in-progress`.
+
+  Only terminal outcomes (CONFIRMED or CANCELLED) are stored as COMPLETED, so a retry during an outage sees the latest state rather than a stale 202. The request hash covers customer, store, token and the sorted items.
+- **Conflict in the spec:** "same key returns the original response" versus "pickup code shown once, stored hashed". Storing the response body with the code in it would keep the plaintext code in the database. Decision: the code is in the first response only. The stored replay omits it, and `POST /api/orders/{id}/pickup-code` reissues a fresh code, which invalidates the old one.
+- **Code security:** 8 characters from a 31-symbol alphabet. Stored as PBKDF2-HMAC-SHA256 with a random salt (20,000 iterations in production, fewer in tests) and compared in constant time. After 5 wrong attempts the pickup locks (423) until the code is reissued.
+
+## ADR-017: Transactional outbox, at-least-once relay, deduping consumer
+
+- **Context:** A state change in Postgres and a message to Kafka can't be committed atomically together (the dual-write problem). Committing the order and then publishing loses the event if the process dies in between. Publishing first and then committing sends events for changes that rolled back.
+- **Decision:** `OrderTransitions.apply` writes the guarded status `UPDATE`, an append-only `order_events` audit row (a trigger blocks UPDATE and DELETE), and an `outbox` row in **one transaction**. `OutboxRelay` runs every 200 ms. It locks up to 100 unpublished rows `FOR UPDATE SKIP LOCKED`, sends each one keyed by order id (3 partitions, so per-order ordering holds), waits for the broker ack (`acks=all`, idempotent producer), and marks the batch published in the same transaction.
+- **Failure behavior:** If the relay dies after sending k messages but before committing, those k are sent again on the next run: duplicates, never loss. inventory-service records each `eventId` in `processed_events` in the same transaction as the effect, so a redelivery is a no-op. The reservation transitions (CONSUMED, RETURNED) are also idempotent by status, so dedupe is a second layer of defense, which is why there's no mutant for removing it alone. Tests: `OutboxRelayIT.relayKilledMidBatchResendsEverythingAndLosesNothing` (crash after 5 sends: all 12 events land, 5 of them twice) and `OrderEventsListenerIT` (3 copies of one event are applied once).
+- **Cost:** Event lag is up to one relay interval plus a batch. The outbox lag is exported as a gauge (`order.outbox.lag.seconds`). The outbox table grows; pruning published rows is a listed limitation. There is no DLQ: a poison event is retried 5 times and then logged and skipped. That is deliberate, because the DLQ pattern is already covered in another project.
+
+## ADR-018: Payment compensation by order id: void plus fence, serialized by an advisory lock
+
+- **Context:** When authorize times out, order-service doesn't know whether a charge exists or what its payment id is. A void-by-payment-id can't be issued, and an authorize still in flight could commit *after* any cleanup.
+- **Decision:** `POST /internal/payments/cancel-order {orderId}` inserts an `order_fences` row and voids any AUTHORIZED payment for the order. Authorize checks the fence and declines with `order_cancelled` if it's there. Both run under `pg_advisory_xact_lock(hash(order_id))`, so they serialize per order: either the authorize commits first and the cancel voids it, or the cancel commits first and the authorize is declined.
+- **Consequence:** `PaymentApiIT.authorizeRacingCancelOrderNeverLeavesALiveCharge` runs 40 racing pairs, and none leaves a live charge. Mutation P3-3 removes the lock. The fence is permanent for that order id, which is fine because order ids are never reused.

@@ -1,0 +1,14 @@
+# mutation check phase4 at 380421f
+# baseline order-service [OrderIdempotencyIT]: 6 tests, 0 failed
+# baseline order-service [OrderIdempotencyIT,PickupFlowIT]: 12 tests, 0 failed
+# baseline order-service [OrderSagaIT]: 15 tests, 0 failed
+# baseline order-service [OrderSagaIT,OutboxRelayIT,PickupFlowIT]: 23 tests, 0 failed
+# baseline order-service [OrderTransitionsIT]: 2 tests, 0 failed
+id     result     secs  description  [tests]
+P4-1   KILLED       30  order transition ignores the legal-source status check  [OrderTransitionsIT] 1/2 failed
+P4-2   KILLED       37  state change commits without its outbox row (dual-write gap)  [OrderSagaIT,OutboxRelayIT,PickupFlowIT] 5/23 failed
+P4-3   KILLED       35  authorize key not derived from the order (retries would double-charge)  [OrderSagaIT] 3/15 failed
+P4-4   KILLED       35  compensation forgets to void/fence at payment  [OrderSagaIT] 6/15 failed
+P4-5   KILLED       31  order idempotency claim without ON CONFLICT  [OrderIdempotencyIT] 5/6 failed
+P4-6   KILLED       32  lease always granted (two actors drive one order)  [OrderIdempotencyIT,PickupFlowIT] 1/12 failed
+# 6/6 mutants killed
